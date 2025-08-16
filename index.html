@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Code API Reset Timetable</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #e0eafc, #cfdef3);
+      color: var(--text-color, #333);
+      transition: background-color 0.3s, color 0.3s;
+    }
+    header {
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.25);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      border-radius: 0 0 10px 10px;
+    }
+    .countdown {
+      font-size: 2rem;
+      margin: 0.5rem 0;
+    }
+    .progress-container {
+      width: 100%;
+      background-color: #ddd;
+      height: 10px;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 10px;
+      background-color: #28a745;
+      width: 0%;
+      transition: width 1s linear;
+    }
+    main {
+      padding: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      background: white;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 0.5rem;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      text-align: center;
+      white-space: nowrap;
+    }
+    th {
+      background: rgba(0, 123, 255, 0.85);
+      color: white;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    tr.today {
+      background-color: rgba(255, 243, 205, 0.6);
+    }
+    tr.date-separator td {
+      background-color: rgba(233, 236, 239, 0.6);
+      font-weight: bold;
+      text-align: left;
+      white-space: normal;
+    }
+    .theme-toggle {
+      margin-top: 0.5rem;
+      cursor: pointer;
+      background: none;
+      border: 1px solid white;
+      color: white;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+    }
+    @media (max-width: 600px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+      thead tr {
+        display: none;
+      }
+      tr {
+        margin-bottom: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 0.5rem;
+      }
+      td {
+        border: none;
+        text-align: left;
+        padding: 0.3rem 0;
+      }
+      td::before {
+        font-weight: bold;
+        display: inline-block;
+        width: 120px;
+      }
+      td:nth-of-type(1)::before { content: "Reset Time"; }
+      td:nth-of-type(2)::before { content: "Time Remaining"; }
+    }
+    .dark-theme {
+      --bg-color: #121212;
+      --text-color: #f4f4f4;
+      --header-bg: #333;
+    }
+    .dark-theme body {
+      background: linear-gradient(135deg, #1e1e1e, #2c2c2c);
+      color: #f4f4f4;
+    }
+    .dark-theme header {
+      background: rgba(50, 50, 50, 0.85);
+      color: #f4f4f4;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .dark-theme table {
+      background: #1e1e1e;
+      color: #f4f4f4;
+    }
+    .dark-theme th {
+      background: rgba(0, 123, 255, 0.85);
+      color: #fff;
+    }
+    .dark-theme tr.today {
+      background-color: rgba(255, 243, 205, 0.2);
+    }
+    .dark-theme tr.date-separator td {
+      background-color: rgba(233, 236, 239, 0.2);
+    }
+    .dark-theme td {
+      color: #f4f4f4;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Claude Code API Reset Timetable</h1>
+    <div class="countdown" id="nextCountdown">--:--:--</div>
+    <div class="progress-container">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+  </header>
+  <main>
+    <label for="nextReset">Next Reset (Unix Timestamp):</label>
+    <input type="number" id="nextReset" placeholder="Enter Unix timestamp" />
+    <button id="generateBtn">Generate</button>
+    <div>
+      <label for="jumpDate">Jump to Date:</label>
+      <input type="date" id="jumpDate" onchange="jumpToDate()" />
+    </div>
+    <table id="timetable">
+      <thead>
+        <tr>
+          <th>Used</th>
+          <th>Reset Time</th>
+          <th>Time Remaining</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+  <script>
+    const intervalMs = 5 * 60 * 60 * 1000; // 5 hours
+    let nextResetUnix = null;
+    let notified = false;
+
+    function toggleTheme() {
+      document.body.classList.toggle('dark-theme');
+    }
+
+    function requestNotificationPermission() {
+      if ("Notification" in window) {
+        Notification.requestPermission();
+      }
+    }
+
+    function notifyNextReset() {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("Claude Code API Reset", {
+          body: "The API limit has been reset!"
+        });
+      }
+    }
+
+    function updateCountdown() {
+      if (!nextResetUnix) return;
+      const now = Date.now();
+      const diff = nextResetUnix - now;
+      if (diff <= 0) {
+        document.getElementById('nextCountdown').textContent = "00:00:00";
+        if (!notified) {
+          notifyNextReset();
+          notified = true;
+        }
+        return;
+      }
+      const hours = String(Math.floor(diff / (1000 * 60 * 60))).padStart(2, '0');
+      const minutes = String(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
+      const seconds = String(Math.floor((diff % (1000 * 60)) / 1000)).padStart(2, '0');
+      document.getElementById('nextCountdown').textContent = `${hours}:${minutes}:${seconds}`;
+    }
+
+    function updateProgressBar() {
+      if (!nextResetUnix) return;
+      const now = Date.now();
+      const elapsed = intervalMs - (nextResetUnix - now);
+      const percent = Math.min(100, Math.max(0, (elapsed / intervalMs) * 100));
+      document.getElementById('progressBar').style.width = percent + "%";
+    }
+
+    function generateTimetable() {
+      const inputVal = document.getElementById('nextReset').value;
+      if (!inputVal) {
+        alert('Please enter a Unix timestamp.');
+        return;
+      }
+      nextResetUnix = parseInt(inputVal, 10) * 1000;
+      notified = false;
+      const tbody = document.querySelector('#timetable tbody');
+      tbody.innerHTML = '';
+      const now = new Date();
+      let rowsAdded = 0;
+      for (let i = 0; i < 30; i++) {
+        const resetTime = new Date(nextResetUnix + i * intervalMs);
+        if (resetTime <= now) continue;
+        const tr = document.createElement('tr');
+        if (resetTime.toDateString() === now.toDateString()) {
+          tr.classList.add('today');
+        }
+        const tdCheck = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            tr.style.opacity = '0.5';
+          } else {
+            tr.style.opacity = '1';
+          }
+        });
+        tdCheck.appendChild(checkbox);
+
+        const tdTime = document.createElement('td');
+        tdTime.textContent = resetTime.toLocaleString();
+        const tdRemain = document.createElement('td');
+        const diff = resetTime - Date.now();
+        const h = String(Math.floor(diff / (1000 * 60 * 60))).padStart(2, '0');
+        const m = String(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
+        const s = String(Math.floor((diff % (1000 * 60)) / 1000)).padStart(2, '0');
+        tdRemain.textContent = `${h}:${m}:${s}`;
+        tr.appendChild(tdCheck);
+        tr.appendChild(tdTime);
+        tr.appendChild(tdRemain);
+        tbody.appendChild(tr);
+        rowsAdded++;
+        if (i < 29) {
+          const nextDate = new Date(nextResetUnix + (i + 1) * intervalMs);
+          if (nextDate.getDate() !== resetTime.getDate()) {
+            const sepRow = document.createElement('tr');
+            sepRow.classList.add('date-separator');
+            const sepCell = document.createElement('td');
+            sepCell.colSpan = 2;
+            sepCell.textContent = nextDate.toDateString();
+            sepRow.appendChild(sepCell);
+            tbody.appendChild(sepRow);
+          }
+        }
+      }
+      if (rowsAdded === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.textContent = "No upcoming reset times found.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      }
+    }
+
+    document.getElementById('generateBtn').addEventListener('click', () => {
+      console.log("Generate button clicked");
+      generateTimetable();
+    });
+
+    // Auto-generate for fixed Claude Code base UNIX time (5-hour intervals)
+    const fixedBaseUnix = 1755331200;
+    document.getElementById('nextReset').value = fixedBaseUnix;
+    nextResetUnix = fixedBaseUnix * 1000;
+    generateTimetable();
+
+    function jumpToDate() {
+      const dateVal = document.getElementById('jumpDate').value;
+      if (!dateVal) return;
+      const rows = document.querySelectorAll('#timetable tbody tr');
+      for (let row of rows) {
+        if (row.classList.contains('date-separator') && row.textContent.includes(new Date(dateVal).toDateString())) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
+      }
+    }
+
+    setInterval(() => {
+      updateCountdown();
+      updateProgressBar();
+    }, 1000);
+
+    requestNotificationPermission();
+  </script>
+</body>
+</html>
