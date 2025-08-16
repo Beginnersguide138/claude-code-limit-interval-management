@@ -201,14 +201,14 @@
     function updateCountdown() {
       if (!nextResetUnix) return;
       const now = Date.now();
-      const diff = nextResetUnix - now;
+      let diff = nextResetUnix - now;
+      // If we've passed the reset time, wrap to next interval
       if (diff <= 0) {
-        document.getElementById('nextCountdown').textContent = "00:00:00";
-        if (!notified) {
-          notifyNextReset();
-          notified = true;
-        }
-        return;
+        // Calculate time until next interval
+        const intervalsPassed = Math.floor((now - nextResetUnix) / intervalMs) + 1;
+        nextResetUnix += intervalsPassed * intervalMs;
+        diff = nextResetUnix - now;
+        notified = false; // reset notification for new interval
       }
       const hours = String(Math.floor(diff / (1000 * 60 * 60))).padStart(2, '0');
       const minutes = String(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
@@ -219,7 +219,13 @@
     function updateProgressBar() {
       if (!nextResetUnix) return;
       const now = Date.now();
-      const elapsed = intervalMs - (nextResetUnix - now);
+      let elapsed = intervalMs - (nextResetUnix - now);
+      // If we've passed the reset time, wrap to next interval
+      if (elapsed < 0) {
+        elapsed = 0;
+      } else if (elapsed > intervalMs) {
+        elapsed = elapsed % intervalMs;
+      }
       const percent = Math.min(100, Math.max(0, (elapsed / intervalMs) * 100));
       document.getElementById('progressBar').style.width = percent + "%";
     }
